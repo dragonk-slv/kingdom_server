@@ -1,7 +1,7 @@
 const HEX_SIZE = 38;
 const SQRT3 = Math.sqrt(3);
-const GRID_COLS = 28;
-const GRID_ROWS = 18;
+const GRID_COLS = 84;
+const GRID_ROWS = 54;
 const DEFAULT_COUNTRY_COLOR = "#e06666";
 const PAN_SENSITIVITY = 1.65;
 
@@ -21,7 +21,7 @@ const TERRAIN_LABEL_MAP = Object.fromEntries(
 const PRESET_COUNTRIES = [
   { name: "ドーラシア", color: "#b02727" },
   { name: "エリミネンス", color: "#e0d067" },
-  { name: "ゼロ", color: "#46ddd3" },
+  { name: "ゼロ", color: "#51bdb6" },
   { name: "ライ", color: "#5f866b" },
   { name: "レイシア", color: "#2e24c2" },
   { name: "ネクレール", color: "#92ec32" },
@@ -71,16 +71,15 @@ const refs = {
   clearOwnershipBtn: document.getElementById("clearOwnershipBtn"),
 
   cityPaintBtn: document.getElementById("cityPaintBtn"),
+  cityDomainBtn: document.getElementById("cityDomainBtn"),
   cityEraseBtn: document.getElementById("cityEraseBtn"),
   cityNameInput: document.getElementById("cityNameInput"),
   cityHpInput: document.getElementById("cityHpInput"),
   cityLevelInput: document.getElementById("cityLevelInput"),
+  cityCountrySelect: document.getElementById("cityCountrySelect"),
   selectedCityInfo: document.getElementById("selectedCityInfo"),
   cityList: document.getElementById("cityList"),
 
-  countryNameInput: document.getElementById("countryNameInput"),
-  countryColorInput: document.getElementById("countryColorInput"),
-  addCountryBtn: document.getElementById("addCountryBtn"),
   countryList: document.getElementById("countryList"),
 
   toggleGridBtn: document.getElementById("toggleGridBtn"),
@@ -194,25 +193,55 @@ function paintTile(tileId) {
 
   if (state.tool === "terrain") {
     tile.terrain = state.selectedTerrain;
+
+    if (tile.terrain === "sea") {
+      tile.countryId = null;
+      state.cities = state.cities.filter((city) => city.tileId !== tile.id);
+      if (state.selectedCityTileId === tile.id) {
+        state.selectedCityTileId = null;
+      }
+    }
   } else if (state.tool === "country") {
-    tile.countryId =
-      state.countryPaintMode === "erase"
-        ? null
-        : (state.selectedCountryId || tile.countryId);
+    if (state.countryPaintMode === "erase") {
+      tile.countryId = null;
+      removeTileFromAllCityDomains(tile.id);
+    } else {
+      if (tile.terrain === "sea") {
+        render();
+        return;
+      }
+      tile.countryId = state.selectedCountryId || tile.countryId;
+
+      state.cities.forEach((city) => {
+        if (city.tileId === tile.id && city.ownerCountryId && city.ownerCountryId !== tile.countryId) {
+          city.ownerCountryId = tile.countryId;
+        }
+      });
+    }
   } else if (state.tool === "city") {
     if (state.cityMode === "erase") {
       state.cities = state.cities.filter((city) => city.tileId !== tileId);
       if (state.selectedCityTileId === tileId) {
         state.selectedCityTileId = null;
       }
-    } else {
+    } else if (state.cityMode === "paint") {
+      if (tile.terrain === "sea") {
+        render();
+        return;
+      }
+
       const name = refs.cityNameInput.value.trim();
       const hp = Number(refs.cityHpInput.value || 0);
       const level = Number(refs.cityLevelInput.value || 0);
+      const ownerCountryId = refs.cityCountrySelect.value || "";
 
-      if (!name || hp <= 0 || level <= 0) {
+      if (!name || hp <= 0 || level <= 0 || !ownerCountryId) {
         render();
         return;
+      }
+
+      if (tile.countryId !== ownerCountryId) {
+        tile.countryId = ownerCountryId;
       }
 
       const existing = getCityByTileId(tileId);
@@ -220,44 +249,69 @@ function paintTile(tileId) {
         existing.name = name;
         existing.hp = hp;
         existing.level = level;
+        existing.ownerCountryId = ownerCountryId;
       } else {
         state.cities.push({
           tileId,
           name,
           hp,
-          level
+          level,
+          ownerCountryId,
+          domainTileIds: []
         });
       }
       state.selectedCityTileId = tileId;
+    } else if (state.cityMode === "domain") {
+      const city = getCityByTileId(state.selectedCityTileId);
+      if (!city) {
+        render();
+        return;
+      }
+
+      if (tile.terrain === "sea") {
+        render();
+        return;
+      }
+
+      if (tile.id === city.tileId) {
+        render();
+        return;
+      }
+
+      if (tile.countryId !== city.ownerCountryId) {
+        render();
+        return;
+      }
+
+      if (city.domainTileIds.includes(tile.id)) {
+        city.domainTileIds = city.domainTileIds.filter((id) => id !== tile.id);
+      } else {
+        city.domainTileIds.push(tile.id);
+      }
     }
   }
 
   render();
 }
 
-function addCountry() {
-  const name = refs.countryNameInput.value.trim();
-  const color = refs.countryColorInput.value;
-  if (!name) return;
-
-  const newCountry = {
-    id: `country_${Date.now()}_${Math.floor(Math.random() * 100000)}`,
-    name,
-    color
-  };
-
-  state.countries.push(newCountry);
-  state.selectedCountryId = newCountry.id;
-  refs.countryNameInput.value = "";
-  refs.countryColorInput.value = DEFAULT_COUNTRY_COLOR;
-  setTool("country");
-  render();
+function removeTileFromAllCityDomains(tileId) {
+  state.cities.forEach((city) => {
+    city.domainTileIds = city.domainTileIds.filter((id) => id !== tileId);
+  });
 }
+
+function addCountry() {}
 
 function removeCountry(countryId) {
   state.countries = state.countries.filter((country) => country.id !== countryId);
   state.tiles.forEach((tile) => {
     if (tile.countryId === countryId) tile.countryId = null;
+  });
+  state.cities.forEach((city) => {
+    if (city.ownerCountryId === countryId) {
+      city.ownerCountryId = "";
+      city.domainTileIds = [];
+    }
   });
   if (state.selectedCountryId === countryId) {
     state.selectedCountryId = state.countries[0]?.id || "";
@@ -267,7 +321,12 @@ function removeCountry(countryId) {
 
 function clearOwnership() {
   state.tiles.forEach((tile) => {
-    tile.countryId = null;
+    if (tile.terrain !== "sea") {
+      tile.countryId = null;
+    }
+  });
+  state.cities.forEach((city) => {
+    city.domainTileIds = [];
   });
   render();
 }
@@ -311,7 +370,17 @@ function exportJson() {
 function fillAllTerrain(terrainKey) {
   state.tiles.forEach((tile) => {
     tile.terrain = terrainKey;
+    if (terrainKey === "sea") {
+      tile.countryId = null;
+      removeTileFromAllCityDomains(tile.id);
+    }
   });
+
+  if (terrainKey === "sea") {
+    state.cities = [];
+    state.selectedCityTileId = null;
+  }
+
   render();
 }
 
@@ -345,7 +414,7 @@ function renderTerrainButtons() {
     const button = document.createElement("button");
     button.textContent = terrain.label;
     button.style.background = terrain.color;
-    button.style.color = terrain.key === "snow" ? "#0f172a" : "#0f172a";
+    button.style.color = "#0f172a";
     button.style.fontWeight = "700";
     button.className = state.selectedTerrain === terrain.key ? "active" : "";
     button.addEventListener("click", () => {
@@ -364,13 +433,26 @@ function renderTerrainButtons() {
 
 function renderCountrySelect() {
   refs.countrySelect.innerHTML = '<option value="">国を選択してください</option>';
+  refs.cityCountrySelect.innerHTML = '<option value="">国家を選択してください</option>';
+
   state.countries.forEach((country) => {
-    const option = document.createElement("option");
-    option.value = country.id;
-    option.textContent = country.name;
-    refs.countrySelect.appendChild(option);
+    const option1 = document.createElement("option");
+    option1.value = country.id;
+    option1.textContent = country.name;
+    refs.countrySelect.appendChild(option1);
+
+    const option2 = document.createElement("option");
+    option2.value = country.id;
+    option2.textContent = country.name;
+    refs.cityCountrySelect.appendChild(option2);
   });
+
   refs.countrySelect.value = state.selectedCountryId;
+
+  const city = getCityByTileId(state.selectedCityTileId);
+  if (city) {
+    refs.cityCountrySelect.value = city.ownerCountryId || "";
+  }
 }
 
 function renderSelectedCountryInfo() {
@@ -421,6 +503,7 @@ function renderCountryList() {
       renderCountryList();
       renderHoverTileInfo();
       renderCityList();
+      renderMap();
     });
 
     const delBtn = document.createElement("button");
@@ -471,6 +554,8 @@ function renderCityList() {
 
   state.cities.forEach((city) => {
     const tile = getTileById(city.tileId);
+    const owner = getCountryById(city.ownerCountryId);
+
     const wrap = document.createElement("div");
     wrap.className = "country-item";
 
@@ -486,21 +571,24 @@ function renderCityList() {
     sub.innerHTML = `
       座標: ${tile ? `${tile.col}, ${tile.row}` : "-"}<br>
       体力: ${city.hp}<br>
-      レベル: ${city.level}
+      レベル: ${city.level}<br>
+      所属国家: ${owner ? escapeHtml(owner.name) : "未設定"}<br>
+      属領数: ${city.domainTileIds.length}
     `;
 
     const btnRow = document.createElement("div");
     btnRow.className = "country-item-actions";
     btnRow.style.marginTop = "10px";
 
-    const jumpBtn = document.createElement("button");
-    jumpBtn.className = "secondary-btn";
-    jumpBtn.textContent = "選択";
-    jumpBtn.addEventListener("click", () => {
+    const selectBtn = document.createElement("button");
+    selectBtn.className = "secondary-btn";
+    selectBtn.textContent = "選択";
+    selectBtn.addEventListener("click", () => {
       state.selectedCityTileId = city.tileId;
       refs.cityNameInput.value = city.name;
       refs.cityHpInput.value = city.hp;
       refs.cityLevelInput.value = city.level;
+      refs.cityCountrySelect.value = city.ownerCountryId || "";
       setTool("city");
       render();
     });
@@ -516,7 +604,7 @@ function renderCityList() {
       render();
     });
 
-    btnRow.appendChild(jumpBtn);
+    btnRow.appendChild(selectBtn);
     btnRow.appendChild(delBtn);
 
     wrap.appendChild(title);
@@ -536,6 +624,8 @@ function renderSelectedCityInfo() {
   }
 
   const tile = getTileById(city.tileId);
+  const owner = getCountryById(city.ownerCountryId);
+
   refs.selectedCityInfo.classList.remove("hidden");
   refs.selectedCityInfo.innerHTML = `
     <div><strong>選択中の都市</strong></div>
@@ -543,6 +633,8 @@ function renderSelectedCityInfo() {
     <div>座標: ${tile ? `${tile.col}, ${tile.row}` : "-"}</div>
     <div>体力: ${city.hp}</div>
     <div>レベル: ${city.level}</div>
+    <div>所属国家: ${owner ? escapeHtml(owner.name) : "未設定"}</div>
+    <div>属領数: ${city.domainTileIds.length}</div>
   `;
 }
 
@@ -557,6 +649,7 @@ function renderHoverTileInfo() {
 
   const country = tile.countryId ? getCountryById(tile.countryId) : null;
   const city = getCityByTileId(tile.id);
+  const domainCity = state.cities.find((c) => c.domainTileIds.includes(tile.id)) || null;
 
   refs.hoverTileInfo.classList.remove("hidden");
   refs.hoverTileInfo.innerHTML = `
@@ -565,6 +658,7 @@ function renderHoverTileInfo() {
     <div>地形: ${TERRAIN_LABEL_MAP[tile.terrain]}</div>
     <div>所属: ${country ? escapeHtml(country.name) : "未設定"}</div>
     <div>都市: ${city ? `${escapeHtml(city.name)} (Lv.${city.level} / HP ${city.hp})` : "なし"}</div>
+    <div>属領: ${domainCity ? escapeHtml(domainCity.name) : "なし"}</div>
   `;
 }
 
@@ -665,8 +759,8 @@ function getTerrainDetailColors(tile) {
 
 function renderMap() {
   const bounds = buildMapBounds();
-  const width = Math.max(1600, bounds.width + 320);
-  const height = Math.max(1000, bounds.height + 280);
+  const width = Math.max(2400, bounds.width + 320);
+  const height = Math.max(1800, bounds.height + 280);
 
   refs.mapSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   refs.mapSvg.innerHTML = "";
@@ -885,6 +979,20 @@ function renderMap() {
       });
     }
 
+    const domainCity = state.cities.find((city) => city.domainTileIds.includes(tile.id));
+    if (domainCity) {
+      const owner = getCountryById(domainCity.ownerCountryId);
+      const domainOutline = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+      domainOutline.setAttribute("points", polygonPoints(pos.x, pos.y, HEX_SIZE * 0.84));
+      domainOutline.setAttribute("fill", "none");
+      domainOutline.setAttribute("stroke", owner ? owner.color : "#ffffff");
+      domainOutline.setAttribute("stroke-width", "2.4");
+      domainOutline.setAttribute("stroke-dasharray", "5 4");
+      domainOutline.setAttribute("stroke-opacity", "0.95");
+      domainOutline.setAttribute("pointer-events", "none");
+      tileGroup.appendChild(domainOutline);
+    }
+
     mapGroup.appendChild(tileGroup);
   });
 
@@ -893,13 +1001,15 @@ function renderMap() {
     if (!tile) return;
 
     const pos = hexToPixel(tile.col, tile.row);
+    const owner = getCountryById(city.ownerCountryId);
+
     const cityGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
 
     const badge = document.createElementNS("http://www.w3.org/2000/svg", "circle");
     badge.setAttribute("cx", pos.x);
     badge.setAttribute("cy", pos.y - 4);
     badge.setAttribute("r", "11");
-    badge.setAttribute("fill", "#2f3640");
+    badge.setAttribute("fill", owner ? owner.color : "#2f3640");
     badge.setAttribute("stroke", "#f8fafc");
     badge.setAttribute("stroke-width", "1.5");
     cityGroup.appendChild(badge);
@@ -945,6 +1055,7 @@ function render() {
   refs.countryPaintBtn.classList.toggle("active", state.countryPaintMode === "paint");
   refs.countryEraseBtn.classList.toggle("active", state.countryPaintMode === "erase");
   refs.cityPaintBtn.classList.toggle("active", state.cityMode === "paint");
+  refs.cityDomainBtn.classList.toggle("active", state.cityMode === "domain");
   refs.cityEraseBtn.classList.toggle("active", state.cityMode === "erase");
   refs.toggleGridBtn.textContent = state.showGrid ? "枠線を隠す" : "枠線を表示";
 
@@ -998,6 +1109,11 @@ refs.cityPaintBtn.addEventListener("click", () => {
   render();
 });
 
+refs.cityDomainBtn.addEventListener("click", () => {
+  state.cityMode = "domain";
+  render();
+});
+
 refs.cityEraseBtn.addEventListener("click", () => {
   state.cityMode = "erase";
   render();
@@ -1008,8 +1124,23 @@ refs.countrySelect.addEventListener("change", (e) => {
   render();
 });
 
+refs.cityCountrySelect.addEventListener("change", (e) => {
+  const city = getCityByTileId(state.selectedCityTileId);
+  if (city) {
+    city.ownerCountryId = e.target.value;
+    const tile = getTileById(city.tileId);
+    if (tile && tile.terrain !== "sea") {
+      tile.countryId = e.target.value;
+    }
+    city.domainTileIds = city.domainTileIds.filter((tileId) => {
+      const t = getTileById(tileId);
+      return t && t.countryId === city.ownerCountryId;
+    });
+    render();
+  }
+});
+
 refs.clearOwnershipBtn.addEventListener("click", clearOwnership);
-refs.addCountryBtn?.addEventListener("click", addCountry);
 
 refs.toggleGridBtn.addEventListener("click", () => {
   state.showGrid = !state.showGrid;
@@ -1051,7 +1182,7 @@ refs.mapSvg.addEventListener(
     e.preventDefault();
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
     state.camera.scale = Math.max(
-      0.45,
+      0.28,
       Math.min(2.3, +(state.camera.scale + delta).toFixed(2))
     );
     renderMap();

@@ -6,61 +6,109 @@ const DEFAULT_COUNTRY_COLOR = "#e06666";
 const PAN_SENSITIVITY = 1.65;
 
 const TERRAIN_OPTIONS = [
-  { key: "plain", label: "平原" },
-  { key: "forest", label: "森" },
-  { key: "mountain", label: "山" },
-  { key: "sea", label: "海" }
+  { key: "plain", label: "平原", color: "#b8cf8d" },
+  { key: "forest", label: "森", color: "#6f9d63" },
+  { key: "mountain", label: "山", color: "#9a9287" },
+  { key: "sea", label: "海", color: "#6ea3d8" },
+  { key: "desert", label: "砂漠", color: "#d9bf83" },
+  { key: "snow", label: "雪原", color: "#dfeaf2" }
 ];
 
 const TERRAIN_LABEL_MAP = Object.fromEntries(
   TERRAIN_OPTIONS.map((item) => [item.key, item.label])
 );
 
+const PRESET_COUNTRIES = [
+  { name: "ドーラシア", color: "#b02727" },
+  { name: "エリミネンス", color: "#e0d067" },
+  { name: "ゼロ", color: "#46ddd3" },
+  { name: "ライ", color: "#5f866b" },
+  { name: "レイシア", color: "#2e24c2" },
+  { name: "ネクレール", color: "#92ec32" },
+  { name: "キトラ", color: "#7efbf3" },
+  { name: "サングイト", color: "#b19710" },
+  { name: "クラーレ", color: "#943ebb" }
+];
+
 const state = {
   tiles: createInitialTiles(),
-  countries: [],
+  countries: createPresetCountries(),
+  cities: [],
   tool: "terrain",
   selectedTerrain: "plain",
   selectedCountryId: "",
   countryPaintMode: "paint",
+  cityMode: "paint",
   draggingTilePaint: false,
   isPanning: false,
   showGrid: true,
   hoverTileId: null,
+  selectedCityTileId: null,
   camera: { x: 120, y: 80, scale: 1 }
 };
+
+if (state.countries.length > 0) {
+  state.selectedCountryId = state.countries[0].id;
+}
 
 const refs = {
   mapSvg: document.getElementById("mapSvg"),
   terrainButtons: document.getElementById("terrainButtons"),
   fillButtons: document.getElementById("fillButtons"),
+
   toolTerrainBtn: document.getElementById("toolTerrainBtn"),
   toolCountryBtn: document.getElementById("toolCountryBtn"),
+  toolCityBtn: document.getElementById("toolCityBtn"),
+
   terrainControls: document.getElementById("terrainControls"),
   countryControls: document.getElementById("countryControls"),
+  cityControls: document.getElementById("cityControls"),
+
   countryPaintBtn: document.getElementById("countryPaintBtn"),
   countryEraseBtn: document.getElementById("countryEraseBtn"),
   countrySelect: document.getElementById("countrySelect"),
   selectedCountryInfo: document.getElementById("selectedCountryInfo"),
   clearOwnershipBtn: document.getElementById("clearOwnershipBtn"),
+
+  cityPaintBtn: document.getElementById("cityPaintBtn"),
+  cityEraseBtn: document.getElementById("cityEraseBtn"),
+  cityNameInput: document.getElementById("cityNameInput"),
+  cityHpInput: document.getElementById("cityHpInput"),
+  cityLevelInput: document.getElementById("cityLevelInput"),
+  selectedCityInfo: document.getElementById("selectedCityInfo"),
+  cityList: document.getElementById("cityList"),
+
   countryNameInput: document.getElementById("countryNameInput"),
   countryColorInput: document.getElementById("countryColorInput"),
   addCountryBtn: document.getElementById("addCountryBtn"),
   countryList: document.getElementById("countryList"),
+
   toggleGridBtn: document.getElementById("toggleGridBtn"),
   resetCameraBtn: document.getElementById("resetCameraBtn"),
   exportBtn: document.getElementById("exportBtn"),
   resetMapBtn: document.getElementById("resetMapBtn"),
+
   plainCount: document.getElementById("plainCount"),
   forestCount: document.getElementById("forestCount"),
   mountainCount: document.getElementById("mountainCount"),
   seaCount: document.getElementById("seaCount"),
+  desertCount: document.getElementById("desertCount"),
+  snowCount: document.getElementById("snowCount"),
+
   hoverTileInfo: document.getElementById("hoverTileInfo"),
   exportWrap: document.getElementById("exportWrap"),
   exportText: document.getElementById("exportText")
 };
 
 const panStart = { mouseX: 0, mouseY: 0, camX: 0, camY: 0 };
+
+function createPresetCountries() {
+  return PRESET_COUNTRIES.map((country, index) => ({
+    id: `country_preset_${index + 1}`,
+    name: country.name,
+    color: country.color
+  }));
+}
 
 function createInitialTiles(cols = GRID_COLS, rows = GRID_ROWS) {
   const tiles = [];
@@ -78,9 +126,6 @@ function createInitialTiles(cols = GRID_COLS, rows = GRID_ROWS) {
   return tiles;
 }
 
-/**
- * 四角形っぽく並ぶ odd-r offset 配置
- */
 function hexToPixel(col, row, size = HEX_SIZE) {
   return {
     x: size * SQRT3 * (col + 0.5 * (row % 2)),
@@ -108,6 +153,10 @@ function getTileById(id) {
   return state.tiles.find((tile) => tile.id === id) || null;
 }
 
+function getCityByTileId(tileId) {
+  return state.cities.find((city) => city.tileId === tileId) || null;
+}
+
 function getOwnedTileCount(countryId) {
   return state.tiles.filter((tile) => tile.countryId === countryId).length;
 }
@@ -119,8 +168,8 @@ function buildMapBounds() {
 
   const minX = Math.min(...xs) - HEX_SIZE - 100;
   const maxX = Math.max(...xs) + HEX_SIZE + 100;
-  const minY = Math.min(...ys) - HEX_SIZE - 100;
-  const maxY = Math.max(...ys) + HEX_SIZE + 100;
+  const minY = Math.min(...ys) - HEX_SIZE - 140;
+  const maxY = Math.max(...ys) + HEX_SIZE + 120;
 
   return {
     width: maxX - minX,
@@ -132,8 +181,11 @@ function setTool(tool) {
   state.tool = tool;
   refs.toolTerrainBtn.classList.toggle("active", tool === "terrain");
   refs.toolCountryBtn.classList.toggle("active", tool === "country");
+  refs.toolCityBtn.classList.toggle("active", tool === "city");
+
   refs.terrainControls.classList.toggle("hidden", tool !== "terrain");
   refs.countryControls.classList.toggle("hidden", tool !== "country");
+  refs.cityControls.classList.toggle("hidden", tool !== "city");
 }
 
 function paintTile(tileId) {
@@ -147,6 +199,37 @@ function paintTile(tileId) {
       state.countryPaintMode === "erase"
         ? null
         : (state.selectedCountryId || tile.countryId);
+  } else if (state.tool === "city") {
+    if (state.cityMode === "erase") {
+      state.cities = state.cities.filter((city) => city.tileId !== tileId);
+      if (state.selectedCityTileId === tileId) {
+        state.selectedCityTileId = null;
+      }
+    } else {
+      const name = refs.cityNameInput.value.trim();
+      const hp = Number(refs.cityHpInput.value || 0);
+      const level = Number(refs.cityLevelInput.value || 0);
+
+      if (!name || hp <= 0 || level <= 0) {
+        render();
+        return;
+      }
+
+      const existing = getCityByTileId(tileId);
+      if (existing) {
+        existing.name = name;
+        existing.hp = hp;
+        existing.level = level;
+      } else {
+        state.cities.push({
+          tileId,
+          name,
+          hp,
+          level
+        });
+      }
+      state.selectedCityTileId = tileId;
+    }
   }
 
   render();
@@ -177,7 +260,7 @@ function removeCountry(countryId) {
     if (tile.countryId === countryId) tile.countryId = null;
   });
   if (state.selectedCountryId === countryId) {
-    state.selectedCountryId = "";
+    state.selectedCountryId = state.countries[0]?.id || "";
   }
   render();
 }
@@ -191,18 +274,24 @@ function clearOwnership() {
 
 function resetMap() {
   state.tiles = createInitialTiles();
-  state.countries = [];
+  state.countries = createPresetCountries();
+  state.cities = [];
   state.tool = "terrain";
   state.selectedTerrain = "plain";
-  state.selectedCountryId = "";
+  state.selectedCountryId = state.countries[0]?.id || "";
   state.countryPaintMode = "paint";
+  state.cityMode = "paint";
   state.showGrid = true;
   state.hoverTileId = null;
+  state.selectedCityTileId = null;
   state.camera = { x: 120, y: 80, scale: 1 };
-  refs.countryNameInput.value = "";
-  refs.countryColorInput.value = DEFAULT_COUNTRY_COLOR;
+
+  refs.cityNameInput.value = "";
+  refs.cityHpInput.value = "100";
+  refs.cityLevelInput.value = "1";
   refs.exportText.value = "";
   refs.exportWrap.classList.add("hidden");
+
   render();
 }
 
@@ -210,7 +299,8 @@ function exportJson() {
   refs.exportText.value = JSON.stringify(
     {
       countries: state.countries,
-      tiles: state.tiles
+      tiles: state.tiles,
+      cities: state.cities
     },
     null,
     2
@@ -230,7 +320,9 @@ function updateStats() {
     plain: 0,
     forest: 0,
     mountain: 0,
-    sea: 0
+    sea: 0,
+    desert: 0,
+    snow: 0
   };
 
   state.tiles.forEach((tile) => {
@@ -241,24 +333,19 @@ function updateStats() {
   refs.forestCount.textContent = counts.forest;
   refs.mountainCount.textContent = counts.mountain;
   refs.seaCount.textContent = counts.sea;
+  refs.desertCount.textContent = counts.desert;
+  refs.snowCount.textContent = counts.snow;
 }
 
 function renderTerrainButtons() {
   refs.terrainButtons.innerHTML = "";
   refs.fillButtons.innerHTML = "";
 
-  const buttonColors = {
-    plain: "#b8cf8d",
-    forest: "#6f9d63",
-    mountain: "#9a9287",
-    sea: "#6ea3d8"
-  };
-
   TERRAIN_OPTIONS.forEach((terrain) => {
     const button = document.createElement("button");
     button.textContent = terrain.label;
-    button.style.background = buttonColors[terrain.key];
-    button.style.color = "#0f172a";
+    button.style.background = terrain.color;
+    button.style.color = terrain.key === "snow" ? "#0f172a" : "#0f172a";
     button.style.fontWeight = "700";
     button.className = state.selectedTerrain === terrain.key ? "active" : "";
     button.addEventListener("click", () => {
@@ -307,14 +394,6 @@ function renderSelectedCountryInfo() {
 function renderCountryList() {
   refs.countryList.innerHTML = "";
 
-  if (state.countries.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "mini-card";
-    empty.textContent = "まだ国がありません。";
-    refs.countryList.appendChild(empty);
-    return;
-  }
-
   state.countries.forEach((country) => {
     const wrap = document.createElement("div");
     wrap.className = "country-item";
@@ -341,6 +420,7 @@ function renderCountryList() {
       renderSelectedCountryInfo();
       renderCountryList();
       renderHoverTileInfo();
+      renderCityList();
     });
 
     const delBtn = document.createElement("button");
@@ -378,6 +458,94 @@ function renderCountryList() {
   });
 }
 
+function renderCityList() {
+  refs.cityList.innerHTML = "";
+
+  if (state.cities.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "mini-card";
+    empty.textContent = "まだ都市がありません。";
+    refs.cityList.appendChild(empty);
+    return;
+  }
+
+  state.cities.forEach((city) => {
+    const tile = getTileById(city.tileId);
+    const wrap = document.createElement("div");
+    wrap.className = "country-item";
+
+    const title = document.createElement("div");
+    title.style.fontWeight = "700";
+    title.style.marginBottom = "8px";
+    title.textContent = city.name;
+
+    const sub = document.createElement("div");
+    sub.style.color = "#94a3b8";
+    sub.style.fontSize = "14px";
+    sub.style.lineHeight = "1.7";
+    sub.innerHTML = `
+      座標: ${tile ? `${tile.col}, ${tile.row}` : "-"}<br>
+      体力: ${city.hp}<br>
+      レベル: ${city.level}
+    `;
+
+    const btnRow = document.createElement("div");
+    btnRow.className = "country-item-actions";
+    btnRow.style.marginTop = "10px";
+
+    const jumpBtn = document.createElement("button");
+    jumpBtn.className = "secondary-btn";
+    jumpBtn.textContent = "選択";
+    jumpBtn.addEventListener("click", () => {
+      state.selectedCityTileId = city.tileId;
+      refs.cityNameInput.value = city.name;
+      refs.cityHpInput.value = city.hp;
+      refs.cityLevelInput.value = city.level;
+      setTool("city");
+      render();
+    });
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "delete-btn";
+    delBtn.textContent = "削除";
+    delBtn.addEventListener("click", () => {
+      state.cities = state.cities.filter((c) => c.tileId !== city.tileId);
+      if (state.selectedCityTileId === city.tileId) {
+        state.selectedCityTileId = null;
+      }
+      render();
+    });
+
+    btnRow.appendChild(jumpBtn);
+    btnRow.appendChild(delBtn);
+
+    wrap.appendChild(title);
+    wrap.appendChild(sub);
+    wrap.appendChild(btnRow);
+
+    refs.cityList.appendChild(wrap);
+  });
+}
+
+function renderSelectedCityInfo() {
+  const city = getCityByTileId(state.selectedCityTileId);
+  if (!city) {
+    refs.selectedCityInfo.classList.add("hidden");
+    refs.selectedCityInfo.innerHTML = "";
+    return;
+  }
+
+  const tile = getTileById(city.tileId);
+  refs.selectedCityInfo.classList.remove("hidden");
+  refs.selectedCityInfo.innerHTML = `
+    <div><strong>選択中の都市</strong></div>
+    <div>名前: ${escapeHtml(city.name)}</div>
+    <div>座標: ${tile ? `${tile.col}, ${tile.row}` : "-"}</div>
+    <div>体力: ${city.hp}</div>
+    <div>レベル: ${city.level}</div>
+  `;
+}
+
 function renderHoverTileInfo() {
   const tile = getTileById(state.hoverTileId);
 
@@ -388,13 +556,38 @@ function renderHoverTileInfo() {
   }
 
   const country = tile.countryId ? getCountryById(tile.countryId) : null;
+  const city = getCityByTileId(tile.id);
+
   refs.hoverTileInfo.classList.remove("hidden");
   refs.hoverTileInfo.innerHTML = `
     <div><strong>ホバー中タイル</strong></div>
     <div>座標: x=${tile.col}, y=${tile.row}</div>
     <div>地形: ${TERRAIN_LABEL_MAP[tile.terrain]}</div>
     <div>所属: ${country ? escapeHtml(country.name) : "未設定"}</div>
+    <div>都市: ${city ? `${escapeHtml(city.name)} (Lv.${city.level} / HP ${city.hp})` : "なし"}</div>
   `;
+}
+
+function getTerrainBaseColor(terrain) {
+  return TERRAIN_OPTIONS.find((item) => item.key === terrain)?.color || "#b8cf8d";
+}
+
+function getTileFillColor(tile) {
+  if (!tile.countryId) {
+    return getTerrainBaseColor(tile.terrain);
+  }
+  const country = getCountryById(tile.countryId);
+  return country ? country.color : getTerrainBaseColor(tile.terrain);
+}
+
+function mixColors(hexA, hexB, ratio) {
+  const a = hexToRgb(hexA);
+  const b = hexToRgb(hexB);
+  return rgbToHex(
+    a.r * (1 - ratio) + b.r * ratio,
+    a.g * (1 - ratio) + b.g * ratio,
+    a.b * (1 - ratio) + b.b * ratio
+  );
 }
 
 function hexToRgb(hex) {
@@ -420,81 +613,46 @@ function rgbToHex(r, g, b) {
   );
 }
 
-function mixColors(colorA, colorB, ratio = 0.5) {
-  const a = hexToRgb(colorA);
-  const b = hexToRgb(colorB);
-  return rgbToHex(
-    a.r * (1 - ratio) + b.r * ratio,
-    a.g * (1 - ratio) + b.g * ratio,
-    a.b * (1 - ratio) + b.b * ratio
-  );
-}
-
-function getTerrainBaseColor(terrain) {
-  switch (terrain) {
-    case "plain":
-      return "#b8cf8d";
-    case "forest":
-      return "#6f9d63";
-    case "mountain":
-      return "#9a9287";
-    case "sea":
-      return "#6ea3d8";
-    default:
-      return "#b8cf8d";
-  }
-}
-
-function getTileFillColor(tile) {
-  const base = getTerrainBaseColor(tile.terrain);
-
-  // 海は国カラーを混ぜない
-  if (tile.terrain === "sea") return base;
-
-  if (!tile.countryId) return base;
-
-  const country = getCountryById(tile.countryId);
-  if (!country) return base;
-
-  switch (tile.terrain) {
-    case "plain":
-      return mixColors(base, country.color, 0.55);
-    case "forest":
-      return mixColors(base, country.color, 0.45);
-    case "mountain":
-      return mixColors(base, country.color, 0.35);
-    default:
-      return mixColors(base, country.color, 0.5);
-  }
-}
-
 function getTerrainDetailColors(tile) {
   const fill = getTileFillColor(tile);
+  const unowned = !tile.countryId;
 
   switch (tile.terrain) {
     case "plain":
       return {
         main: fill,
-        detail1: mixColors(fill, "#ffffff", 0.2),
-        detail2: mixColors(fill, "#7a8f57", 0.35)
+        detail1: unowned ? mixColors(fill, "#ffffff", 0.2) : mixColors(fill, "#ffffff", 0.12),
+        detail2: unowned ? mixColors(fill, "#7a8f57", 0.35) : mixColors(fill, "#000000", 0.18)
       };
     case "forest":
       return {
         main: fill,
-        detail1: mixColors(fill, "#1f4d2b", 0.55),
-        detail2: mixColors(fill, "#5d432d", 0.45)
+        detail1: mixColors(fill, "#1a4d22", 0.72),
+        detail2: mixColors(fill, "#5d432d", 0.55)
       };
     case "mountain":
       return {
         main: fill,
-        detail1: mixColors(fill, "#5f5a54", 0.45),
-        detail2: mixColors(fill, "#dfe5ea", 0.35)
+        detail1: mixColors(fill, "#4d4a45", 0.6),
+        detail2: mixColors(fill, "#f0f4f8", 0.45)
       };
     case "sea":
       return {
         main: fill,
-        detail1: mixColors(fill, "#d7ebff", 0.55),
-        detail2: mixColors(fill, "#3f78b5", 0.25)
+        detail1: mixColors(fill, "#e6f4ff", 0.65),
+        detail2: mixColors(fill, "#3f78b5", 0.3)
+      };
+    case "desert":
+      return {
+        main: fill,
+        detail1: mixColors(fill, "#f3e3b2", 0.35),
+        detail2: mixColors(fill, "#af8c52", 0.4)
+      };
+    case "snow":
+      return {
+        main: fill,
+        detail1: mixColors(fill, "#ffffff", 0.6),
+        detail2: mixColors(fill, "#a9bfd3", 0.3)
       };
     default:
       return {
@@ -557,7 +715,7 @@ function renderMap() {
     base.setAttribute(
       "stroke",
       state.showGrid
-        ? (tile.terrain === "sea" ? "rgba(40,60,90,0.45)" : "rgba(22,34,49,0.85)")
+        ? (tile.terrain === "sea" ? "rgba(40,60,90,0.55)" : "rgba(22,34,49,0.85)")
         : "transparent"
     );
     base.setAttribute("stroke-width", "1.7");
@@ -616,7 +774,7 @@ function renderMap() {
           `${pos.x + dx},${pos.y + dy - 6} ${pos.x + dx - 5},${pos.y + dy + 4} ${pos.x + dx + 5},${pos.y + dy + 4}`
         );
         tri.setAttribute("fill", colors.detail1);
-        tri.setAttribute("fill-opacity", "0.9");
+        tri.setAttribute("fill-opacity", "0.95");
         tri.setAttribute("pointer-events", "none");
         tileGroup.appendChild(tri);
 
@@ -626,7 +784,7 @@ function renderMap() {
         trunk.setAttribute("width", "1.6");
         trunk.setAttribute("height", "4");
         trunk.setAttribute("fill", colors.detail2);
-        trunk.setAttribute("fill-opacity", "0.9");
+        trunk.setAttribute("fill-opacity", "0.95");
         trunk.setAttribute("pointer-events", "none");
         tileGroup.appendChild(trunk);
       });
@@ -639,7 +797,7 @@ function renderMap() {
         `${pos.x - 14},${pos.y + 9} ${pos.x - 3},${pos.y - 10} ${pos.x + 9},${pos.y + 9}`
       );
       mountain1.setAttribute("fill", colors.detail1);
-      mountain1.setAttribute("fill-opacity", "0.9");
+      mountain1.setAttribute("fill-opacity", "0.95");
       mountain1.setAttribute("pointer-events", "none");
       tileGroup.appendChild(mountain1);
 
@@ -649,7 +807,7 @@ function renderMap() {
         `${pos.x - 1},${pos.y + 11} ${pos.x + 11},${pos.y - 8} ${pos.x + 18},${pos.y + 11}`
       );
       mountain2.setAttribute("fill", mixColors(colors.detail1, "#000000", 0.18));
-      mountain2.setAttribute("fill-opacity", "0.9");
+      mountain2.setAttribute("fill-opacity", "0.95");
       mountain2.setAttribute("pointer-events", "none");
       tileGroup.appendChild(mountain2);
 
@@ -659,7 +817,7 @@ function renderMap() {
         `${pos.x + 7},${pos.y - 1} ${pos.x + 11},${pos.y - 8} ${pos.x + 14},${pos.y - 1}`
       );
       snow.setAttribute("fill", colors.detail2);
-      snow.setAttribute("fill-opacity", "0.8");
+      snow.setAttribute("fill-opacity", "0.85");
       snow.setAttribute("pointer-events", "none");
       tileGroup.appendChild(snow);
     }
@@ -673,7 +831,7 @@ function renderMap() {
           `M ${pos.x - 15} ${pos.y + dy} q 5 -3 10 0 q 5 3 10 0 q 5 -3 10 0`
         );
         path.setAttribute("stroke", colors.detail1);
-        path.setAttribute("stroke-opacity", "0.9");
+        path.setAttribute("stroke-opacity", "0.92");
         path.setAttribute("stroke-width", "1.8");
         path.setAttribute("fill", "none");
         path.setAttribute("pointer-events", "none");
@@ -681,20 +839,101 @@ function renderMap() {
       });
     }
 
-    const country = tile.countryId ? getCountryById(tile.countryId) : null;
-    if (country && tile.terrain !== "sea") {
-      const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      dot.setAttribute("cx", pos.x);
-      dot.setAttribute("cy", pos.y);
-      dot.setAttribute("r", HEX_SIZE * 0.1);
-      dot.setAttribute("fill", mixColors(country.color, "#ffffff", 0.18));
-      dot.setAttribute("stroke", "white");
-      dot.setAttribute("stroke-width", "1.1");
-      dot.setAttribute("pointer-events", "none");
-      tileGroup.appendChild(dot);
+    if (tile.terrain === "desert") {
+      const dune1 = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      dune1.setAttribute(
+        "d",
+        `M ${pos.x - 13} ${pos.y + 4} q 8 -6 16 0 q 8 6 16 0`
+      );
+      dune1.setAttribute("stroke", colors.detail2);
+      dune1.setAttribute("stroke-width", "2");
+      dune1.setAttribute("stroke-opacity", "0.6");
+      dune1.setAttribute("fill", "none");
+      dune1.setAttribute("pointer-events", "none");
+      tileGroup.appendChild(dune1);
+
+      const dune2 = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      dune2.setAttribute(
+        "d",
+        `M ${pos.x - 10} ${pos.y - 8} q 6 -4 12 0 q 6 4 12 0`
+      );
+      dune2.setAttribute("stroke", colors.detail1);
+      dune2.setAttribute("stroke-width", "1.5");
+      dune2.setAttribute("stroke-opacity", "0.55");
+      dune2.setAttribute("fill", "none");
+      dune2.setAttribute("pointer-events", "none");
+      tileGroup.appendChild(dune2);
+    }
+
+    if (tile.terrain === "snow") {
+      const flakes = [
+        [-9, -6],
+        [10, -8],
+        [-2, 8],
+        [12, 7]
+      ];
+
+      flakes.forEach(([dx, dy]) => {
+        const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        c.setAttribute("cx", pos.x + dx);
+        c.setAttribute("cy", pos.y + dy);
+        c.setAttribute("r", "2");
+        c.setAttribute("fill", colors.detail1);
+        c.setAttribute("fill-opacity", "0.85");
+        c.setAttribute("pointer-events", "none");
+        tileGroup.appendChild(c);
+      });
     }
 
     mapGroup.appendChild(tileGroup);
+  });
+
+  state.cities.forEach((city) => {
+    const tile = getTileById(city.tileId);
+    if (!tile) return;
+
+    const pos = hexToPixel(tile.col, tile.row);
+    const cityGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+
+    const badge = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    badge.setAttribute("cx", pos.x);
+    badge.setAttribute("cy", pos.y - 4);
+    badge.setAttribute("r", "11");
+    badge.setAttribute("fill", "#2f3640");
+    badge.setAttribute("stroke", "#f8fafc");
+    badge.setAttribute("stroke-width", "1.5");
+    cityGroup.appendChild(badge);
+
+    const tower = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    tower.setAttribute("x", pos.x - 4);
+    tower.setAttribute("y", pos.y - 10);
+    tower.setAttribute("width", "8");
+    tower.setAttribute("height", "10");
+    tower.setAttribute("fill", "#f8fafc");
+    cityGroup.appendChild(tower);
+
+    const roof = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    roof.setAttribute(
+      "points",
+      `${pos.x - 6},${pos.y - 10} ${pos.x},${pos.y - 16} ${pos.x + 6},${pos.y - 10}`
+    );
+    roof.setAttribute("fill", "#f8fafc");
+    cityGroup.appendChild(roof);
+
+    const nameText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    nameText.setAttribute("x", pos.x);
+    nameText.setAttribute("y", pos.y + 24);
+    nameText.setAttribute("text-anchor", "middle");
+    nameText.setAttribute("font-size", "12");
+    nameText.setAttribute("font-weight", "700");
+    nameText.setAttribute("fill", "#f8fafc");
+    nameText.setAttribute("stroke", "rgba(0,0,0,0.45)");
+    nameText.setAttribute("stroke-width", "2.5");
+    nameText.setAttribute("paint-order", "stroke");
+    nameText.textContent = city.name;
+    cityGroup.appendChild(nameText);
+
+    mapGroup.appendChild(cityGroup);
   });
 
   refs.mapSvg.appendChild(mapGroup);
@@ -705,19 +944,23 @@ function render() {
 
   refs.countryPaintBtn.classList.toggle("active", state.countryPaintMode === "paint");
   refs.countryEraseBtn.classList.toggle("active", state.countryPaintMode === "erase");
+  refs.cityPaintBtn.classList.toggle("active", state.cityMode === "paint");
+  refs.cityEraseBtn.classList.toggle("active", state.cityMode === "erase");
   refs.toggleGridBtn.textContent = state.showGrid ? "枠線を隠す" : "枠線を表示";
 
   renderTerrainButtons();
   renderCountrySelect();
   renderSelectedCountryInfo();
+  renderSelectedCityInfo();
   renderCountryList();
+  renderCityList();
   renderHoverTileInfo();
   renderMap();
   updateStats();
 }
 
 function escapeHtml(value) {
-  return value
+  return String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -735,6 +978,11 @@ refs.toolCountryBtn.addEventListener("click", () => {
   render();
 });
 
+refs.toolCityBtn.addEventListener("click", () => {
+  setTool("city");
+  render();
+});
+
 refs.countryPaintBtn.addEventListener("click", () => {
   state.countryPaintMode = "paint";
   render();
@@ -745,13 +993,23 @@ refs.countryEraseBtn.addEventListener("click", () => {
   render();
 });
 
+refs.cityPaintBtn.addEventListener("click", () => {
+  state.cityMode = "paint";
+  render();
+});
+
+refs.cityEraseBtn.addEventListener("click", () => {
+  state.cityMode = "erase";
+  render();
+});
+
 refs.countrySelect.addEventListener("change", (e) => {
   state.selectedCountryId = e.target.value;
   render();
 });
 
 refs.clearOwnershipBtn.addEventListener("click", clearOwnership);
-refs.addCountryBtn.addEventListener("click", addCountry);
+refs.addCountryBtn?.addEventListener("click", addCountry);
 
 refs.toggleGridBtn.addEventListener("click", () => {
   state.showGrid = !state.showGrid;
@@ -768,7 +1026,8 @@ refs.resetMapBtn.addEventListener("click", resetMap);
 
 refs.mapSvg.addEventListener("mousedown", (e) => {
   if (e.button !== 0) return;
-  if (e.target.tagName.toLowerCase() === "polygon" || e.target.tagName.toLowerCase() === "path" || e.target.tagName.toLowerCase() === "circle" || e.target.tagName.toLowerCase() === "rect") return;
+  const tag = e.target.tagName.toLowerCase();
+  if (tag === "polygon" || tag === "path" || tag === "circle" || tag === "rect" || tag === "text") return;
 
   state.isPanning = true;
   panStart.mouseX = e.clientX;

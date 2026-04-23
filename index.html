@@ -12,8 +12,8 @@
       <div class="panel intro-panel">
         <h1>六角形マップエディタ</h1>
         <p>
-          地形・領土・都市を編集するための試作完成版です。
-          左クリックで塗る、ドラッグで連続塗り、背景ドラッグでマップ移動、ホイールで拡大縮小できます。
+          地形・領土・都市・属領を編集するための試作完成版です。
+          左クリックで編集、ドラッグで連続塗り、背景ドラッグでマップ移動、ホイールで拡大縮小できます。
         </p>
       </div>
 
@@ -50,9 +50,10 @@
 
         <div id="cityControls" class="tool-section hidden">
           <label>都市の操作</label>
-          <div class="tool-switch">
-            <button id="cityPaintBtn" class="active">都市を配置/更新</button>
-            <button id="cityEraseBtn">都市を削除</button>
+          <div class="tool-switch tool-switch-3">
+            <button id="cityPaintBtn" class="active">都市配置/更新</button>
+            <button id="cityDomainBtn">属領設定</button>
+            <button id="cityEraseBtn">都市削除</button>
           </div>
 
           <div class="field-group">
@@ -70,7 +71,20 @@
             <input id="cityLevelInput" type="number" min="1" value="1" />
           </div>
 
+          <div class="field-group">
+            <label for="cityCountrySelect">都市の所属国家</label>
+            <select id="cityCountrySelect">
+              <option value="">国家を選択してください</option>
+            </select>
+          </div>
+
           <div id="selectedCityInfo" class="mini-card hidden"></div>
+          <div class="mini-card">
+            都市編集モードでは、<br>
+            「都市配置/更新」…都市そのものを置く<br>
+            「属領設定」…選択中の都市に属領を割り当てる<br>
+            「都市削除」…都市を削除
+          </div>
         </div>
       </section>
 

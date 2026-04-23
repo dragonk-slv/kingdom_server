@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>六角形マップエディタ</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="panel intro-panel">
+        <h1>六角形マップエディタ</h1>
+        <p>
+          地形と国の所属を編集するための試作完成版です。
+          左クリックで塗る、ドラッグで連続塗り、背景ドラッグでマップ移動、ホイールで拡大縮小できます。
+        </p>
+      </div>
+
+      <section class="panel">
+        <h2>編集ツール</h2>
+        <div class="tool-switch">
+          <button id="toolTerrainBtn" class="active">地形編集</button>
+          <button id="toolCountryBtn">国編集</button>
+        </div>
+
+        <div id="terrainControls" class="tool-section">
+          <label>地形タイプ</label>
+          <div class="terrain-grid" id="terrainButtons"></div>
+          <div class="fill-grid" id="fillButtons"></div>
+        </div>
+
+        <div id="countryControls" class="tool-section hidden">
+          <label>所属の塗り方</label>
+          <div class="tool-switch">
+            <button id="countryPaintBtn" class="active">所属を塗る</button>
+            <button id="countryEraseBtn">所属を消す</button>
+          </div>
+
+          <label for="countrySelect">選択中の国</label>
+          <select id="countrySelect">
+            <option value="">国を選択してください</option>
+          </select>
+
+          <div id="selectedCountryInfo" class="mini-card hidden"></div>
+
+          <button id="clearOwnershipBtn" class="secondary-btn">全タイルの所属を解除</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>国の作成</h2>
+        <div class="field-group">
+          <label for="countryNameInput">国名</label>
+          <input id="countryNameInput" type="text" placeholder="例: ドーラシア" />
+        </div>
+        <div class="field-group">
+          <label for="countryColorInput">色</label>
+          <input id="countryColorInput" type="color" value="#e06666" />
+        </div>
+        <button id="addCountryBtn" class="primary-btn">国を追加</button>
+
+        <div id="countryList" class="country-list"></div>
+      </section>
+
+      <section class="panel">
+        <h2>表示・管理</h2>
+        <div class="manage-grid">
+          <button id="toggleGridBtn" class="secondary-btn">枠線を隠す</button>
+          <button id="resetCameraBtn" class="secondary-btn">カメラ初期化</button>
+          <button id="exportBtn" class="accent-btn">JSON出力</button>
+          <button id="resetMapBtn" class="danger-btn">全リセット</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>状況</h2>
+        <div class="stats-grid">
+          <div class="stat-card"><span>平原</span><strong id="plainCount">0</strong></div>
+          <div class="stat-card"><span>森</span><strong id="forestCount">0</strong></div>
+          <div class="stat-card"><span>山</span><strong id="mountainCount">0</strong></div>
+          <div class="stat-card"><span>海</span><strong id="seaCount">0</strong></div>
+        </div>
+
+        <div id="hoverTileInfo" class="mini-card hidden"></div>
+
+        <div id="exportWrap" class="field-group hidden">
+          <label for="exportText">JSON</label>
+          <textarea id="exportText" readonly></textarea>
+        </div>
+      </section>
+    </aside>
+
+    <main class="map-area">
+      <div class="map-help">
+        <div>操作</div>
+        <div>左クリック: 塗る / 背景ドラッグ: 移動 / ホイール: ズーム</div>
+      </div>
+
+      <svg id="mapSvg" class="map-svg"></svg>
+    </main>
+  </div>
+
+  <script src="./main.js"></script>
+</body>
+</html>

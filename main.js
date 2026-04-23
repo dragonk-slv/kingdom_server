@@ -1,21 +1,19 @@
-const HEX_SIZE = 42;
+const HEX_SIZE = 38;
 const SQRT3 = Math.sqrt(3);
-const GRID_COLS = 24;
+const GRID_COLS = 28;
 const GRID_ROWS = 18;
 const DEFAULT_COUNTRY_COLOR = "#e06666";
+const PAN_SENSITIVITY = 1.65;
 
 const TERRAIN_OPTIONS = [
-  { key: "plain", label: "平原", color: "#a8d08d" },
-  { key: "forest", label: "森", color: "#6aa84f" },
-  { key: "mountain", label: "山", color: "#8e7f7f" },
-  { key: "sea", label: "海", color: "#6fa8dc" }
+  { key: "plain", label: "平原", base: "#b8cf8d" },
+  { key: "forest", label: "森", base: "#6fa05d" },
+  { key: "mountain", label: "山", base: "#9a9287" },
+  { key: "sea", label: "海", base: "#6ea3d8" }
 ];
 
 const TERRAIN_LABEL_MAP = Object.fromEntries(
   TERRAIN_OPTIONS.map((item) => [item.key, item.label])
-);
-const TERRAIN_COLOR_MAP = Object.fromEntries(
-  TERRAIN_OPTIONS.map((item) => [item.key, item.color])
 );
 
 const state = {
@@ -66,12 +64,12 @@ const panStart = { mouseX: 0, mouseY: 0, camX: 0, camY: 0 };
 
 function createInitialTiles(cols = GRID_COLS, rows = GRID_ROWS) {
   const tiles = [];
-  for (let q = 0; q < cols; q += 1) {
-    for (let r = 0; r < rows; r += 1) {
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
       tiles.push({
-        id: `${q}_${r}`,
-        q,
-        r,
+        id: `${col}_${row}`,
+        col,
+        row,
         terrain: "plain",
         countryId: null
       });
@@ -80,17 +78,22 @@ function createInitialTiles(cols = GRID_COLS, rows = GRID_ROWS) {
   return tiles;
 }
 
-function hexToPixel(q, r, size = HEX_SIZE) {
+/**
+ * 斜めに広がる軸座標ではなく、
+ * 「四角形っぽく並ぶ」odd-r offset で配置
+ */
+function hexToPixel(col, row, size = HEX_SIZE) {
   return {
-    x: size * 1.5 * q,
-    y: size * SQRT3 * (r + q / 2)
+    x: size * SQRT3 * (col + 0.5 * (row % 2)),
+    y: size * 1.5 * row
   };
 }
 
 function polygonPoints(cx, cy, size = HEX_SIZE) {
   const points = [];
   for (let i = 0; i < 6; i += 1) {
-    const angleRad = (Math.PI / 180) * (60 * i);
+    const angleDeg = 60 * i - 30;
+    const angleRad = (Math.PI / 180) * angleDeg;
     const x = cx + size * Math.cos(angleRad);
     const y = cy + size * Math.sin(angleRad);
     points.push(`${x},${y}`);
@@ -111,13 +114,14 @@ function getOwnedTileCount(countryId) {
 }
 
 function buildMapBounds() {
-  const positions = state.tiles.map((tile) => hexToPixel(tile.q, tile.r));
+  const positions = state.tiles.map((tile) => hexToPixel(tile.col, tile.row));
   const xs = positions.map((p) => p.x);
   const ys = positions.map((p) => p.y);
-  const minX = Math.min(...xs) - HEX_SIZE - 80;
-  const maxX = Math.max(...xs) + HEX_SIZE + 80;
-  const minY = Math.min(...ys) - HEX_SIZE - 80;
-  const maxY = Math.max(...ys) + HEX_SIZE + 80;
+
+  const minX = Math.min(...xs) - HEX_SIZE - 100;
+  const maxX = Math.max(...xs) + HEX_SIZE + 100;
+  const minY = Math.min(...ys) - HEX_SIZE - 100;
+  const maxY = Math.max(...ys) + HEX_SIZE + 100;
 
   return {
     width: maxX - minX,
@@ -152,7 +156,6 @@ function paintTile(tileId) {
 function addCountry() {
   const name = refs.countryNameInput.value.trim();
   const color = refs.countryColorInput.value;
-
   if (!name) return;
 
   const newCountry = {
@@ -248,7 +251,7 @@ function renderTerrainButtons() {
   TERRAIN_OPTIONS.forEach((terrain) => {
     const button = document.createElement("button");
     button.textContent = terrain.label;
-    button.style.background = terrain.color;
+    button.style.background = terrain.base;
     button.style.color = "#0f172a";
     button.style.fontWeight = "700";
     button.className = state.selectedTerrain === terrain.key ? "active" : "";
@@ -382,21 +385,15 @@ function renderHoverTileInfo() {
   refs.hoverTileInfo.classList.remove("hidden");
   refs.hoverTileInfo.innerHTML = `
     <div><strong>ホバー中タイル</strong></div>
-    <div>座標: q=${tile.q}, r=${tile.r}</div>
+    <div>座標: x=${tile.col}, y=${tile.row}</div>
     <div>地形: ${TERRAIN_LABEL_MAP[tile.terrain]}</div>
     <div>所属: ${country ? escapeHtml(country.name) : "未設定"}</div>
   `;
 }
 
-function renderMap() {
-  const bounds = buildMapBounds();
-  const width = Math.max(1600, bounds.width + 300);
-  const height = Math.max(1100, bounds.height + 300);
-
-  refs.mapSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  refs.mapSvg.innerHTML = "";
-
+function createPatternDefs(svg) {
   const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+
   const filter = document.createElementNS("http://www.w3.org/2000/svg", "filter");
   filter.setAttribute("id", "shadow");
   filter.setAttribute("x", "-50%");
@@ -405,13 +402,162 @@ function renderMap() {
   filter.setAttribute("height", "200%");
   const feDropShadow = document.createElementNS("http://www.w3.org/2000/svg", "feDropShadow");
   feDropShadow.setAttribute("dx", "0");
-  feDropShadow.setAttribute("dy", "5");
-  feDropShadow.setAttribute("stdDeviation", "8");
+  feDropShadow.setAttribute("dy", "4");
+  feDropShadow.setAttribute("stdDeviation", "6");
   feDropShadow.setAttribute("flood-color", "#000000");
-  feDropShadow.setAttribute("flood-opacity", "0.35");
+  feDropShadow.setAttribute("flood-opacity", "0.28");
   filter.appendChild(feDropShadow);
   defs.appendChild(filter);
-  refs.mapSvg.appendChild(defs);
+
+  defs.appendChild(makePlainPattern());
+  defs.appendChild(makeForestPattern());
+  defs.appendChild(makeMountainPattern());
+  defs.appendChild(makeSeaPattern());
+
+  svg.appendChild(defs);
+}
+
+function makePlainPattern() {
+  const p = document.createElementNS("http://www.w3.org/2000/svg", "pattern");
+  p.setAttribute("id", "terrain-plain");
+  p.setAttribute("patternUnits", "userSpaceOnUse");
+  p.setAttribute("width", "64");
+  p.setAttribute("height", "64");
+
+  const bg = rect(0, 0, 64, 64, "#b8cf8d");
+  p.appendChild(bg);
+
+  p.appendChild(circle(12, 14, 3, "#9fbe74", 0.55));
+  p.appendChild(circle(25, 8, 2, "#dbe8b7", 0.45));
+  p.appendChild(circle(42, 18, 3, "#a7c77d", 0.5));
+  p.appendChild(circle(18, 34, 2.4, "#dce9b9", 0.5));
+  p.appendChild(circle(48, 36, 3.2, "#9ebd76", 0.52));
+  p.appendChild(circle(30, 50, 2.4, "#dce9ba", 0.48));
+  p.appendChild(circle(54, 54, 2.8, "#a5c57c", 0.5));
+
+  return p;
+}
+
+function makeForestPattern() {
+  const p = document.createElementNS("http://www.w3.org/2000/svg", "pattern");
+  p.setAttribute("id", "terrain-forest");
+  p.setAttribute("patternUnits", "userSpaceOnUse");
+  p.setAttribute("width", "70");
+  p.setAttribute("height", "70");
+
+  p.appendChild(rect(0, 0, 70, 70, "#729b61"));
+
+  const trees = [
+    [12, 16], [32, 14], [52, 18],
+    [20, 36], [42, 34], [58, 44],
+    [10, 54], [30, 56], [50, 56]
+  ];
+
+  trees.forEach(([x, y]) => {
+    const tri = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    tri.setAttribute("points", `${x},${y - 8} ${x - 7},${y + 6} ${x + 7},${y + 6}`);
+    tri.setAttribute("fill", "#2f6132");
+    tri.setAttribute("fill-opacity", "0.9");
+    p.appendChild(tri);
+
+    const trunk = rect(x - 1, y + 6, 2, 5, "#60452e", 0.85);
+    p.appendChild(trunk);
+  });
+
+  return p;
+}
+
+function makeMountainPattern() {
+  const p = document.createElementNS("http://www.w3.org/2000/svg", "pattern");
+  p.setAttribute("id", "terrain-mountain");
+  p.setAttribute("patternUnits", "userSpaceOnUse");
+  p.setAttribute("width", "72");
+  p.setAttribute("height", "72");
+
+  p.appendChild(rect(0, 0, 72, 72, "#9d958a"));
+
+  const mountains = [
+    "8,48 24,18 40,48",
+    "28,56 46,24 62,56",
+    "0,60 12,36 24,60"
+  ];
+
+  mountains.forEach((pts, index) => {
+    const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    poly.setAttribute("points", pts);
+    poly.setAttribute("fill", index === 1 ? "#756f67" : "#68635d");
+    poly.setAttribute("fill-opacity", "0.9");
+    p.appendChild(poly);
+  });
+
+  const snow = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+  snow.setAttribute("points", "40,33 46,24 52,34");
+  snow.setAttribute("fill", "#d9dfe5");
+  snow.setAttribute("fill-opacity", "0.85");
+  p.appendChild(snow);
+
+  return p;
+}
+
+function makeSeaPattern() {
+  const p = document.createElementNS("http://www.w3.org/2000/svg", "pattern");
+  p.setAttribute("id", "terrain-sea");
+  p.setAttribute("patternUnits", "userSpaceOnUse");
+  p.setAttribute("width", "72");
+  p.setAttribute("height", "72");
+
+  p.appendChild(rect(0, 0, 72, 72, "#6b9fd2"));
+
+  const waves = [
+    [6, 18], [8, 40], [10, 60]
+  ];
+
+  waves.forEach(([x, y]) => {
+    for (let i = 0; i < 3; i += 1) {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      const xx = x + i * 22;
+      path.setAttribute("d", `M ${xx} ${y} q 6 -5 12 0 q 6 5 12 0`);
+      path.setAttribute("stroke", "#d7ebff");
+      path.setAttribute("stroke-opacity", "0.5");
+      path.setAttribute("stroke-width", "2");
+      path.setAttribute("fill", "none");
+      p.appendChild(path);
+    }
+  });
+
+  return p;
+}
+
+function rect(x, y, width, height, fill, opacity = 1) {
+  const r = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  r.setAttribute("x", x);
+  r.setAttribute("y", y);
+  r.setAttribute("width", width);
+  r.setAttribute("height", height);
+  r.setAttribute("fill", fill);
+  r.setAttribute("fill-opacity", opacity);
+  return r;
+}
+
+function circle(cx, cy, r, fill, opacity = 1) {
+  const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  c.setAttribute("cx", cx);
+  c.setAttribute("cy", cy);
+  c.setAttribute("r", r);
+  c.setAttribute("fill", fill);
+  c.setAttribute("fill-opacity", opacity);
+  return c;
+}
+
+function renderMap() {
+  const bounds = buildMapBounds();
+  const width = Math.max(1600, bounds.width + 320);
+  const height = Math.max(1000, bounds.height + 280);
+
+  refs.mapSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  refs.mapSvg.innerHTML = "";
+
+  createPatternDefs(refs.mapSvg);
 
   const background = document.createElementNS("http://www.w3.org/2000/svg", "rect");
   background.setAttribute("x", "0");
@@ -428,14 +574,17 @@ function renderMap() {
   );
 
   state.tiles.forEach((tile) => {
-    const pos = hexToPixel(tile.q, tile.r);
+    const pos = hexToPixel(tile.col, tile.row);
     const country = tile.countryId ? getCountryById(tile.countryId) : null;
+    const hexPoints = polygonPoints(pos.x, pos.y, HEX_SIZE);
+
+    const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
 
     const base = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-    base.setAttribute("points", polygonPoints(pos.x, pos.y, HEX_SIZE));
-    base.setAttribute("fill", TERRAIN_COLOR_MAP[tile.terrain]);
-    base.setAttribute("stroke", state.showGrid ? "rgba(15,23,42,0.9)" : "transparent");
-    base.setAttribute("stroke-width", "2");
+    base.setAttribute("points", hexPoints);
+    base.setAttribute("fill", `url(#terrain-${tile.terrain})`);
+    base.setAttribute("stroke", state.showGrid ? "rgba(22,34,49,0.85)" : "transparent");
+    base.setAttribute("stroke-width", "1.7");
     base.setAttribute("filter", "url(#shadow)");
 
     base.addEventListener("mousedown", (e) => {
@@ -453,26 +602,35 @@ function renderMap() {
       }
     });
 
-    mapGroup.appendChild(base);
+    group.appendChild(base);
 
     if (country) {
-      const overlay = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-      overlay.setAttribute("points", polygonPoints(pos.x, pos.y, HEX_SIZE * 0.72));
-      overlay.setAttribute("fill", country.color);
-      overlay.setAttribute("fill-opacity", "0.55");
-      overlay.setAttribute("pointer-events", "none");
-      mapGroup.appendChild(overlay);
+      const tint = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+      tint.setAttribute("points", hexPoints);
+      tint.setAttribute("fill", country.color);
+      tint.setAttribute("fill-opacity", tile.terrain === "sea" ? "0.22" : "0.34");
+      tint.setAttribute("pointer-events", "none");
+      group.appendChild(tint);
+
+      const inner = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+      inner.setAttribute("points", polygonPoints(pos.x, pos.y, HEX_SIZE * 0.72));
+      inner.setAttribute("fill", country.color);
+      inner.setAttribute("fill-opacity", tile.terrain === "sea" ? "0.16" : "0.24");
+      inner.setAttribute("pointer-events", "none");
+      group.appendChild(inner);
 
       const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       dot.setAttribute("cx", pos.x);
       dot.setAttribute("cy", pos.y);
-      dot.setAttribute("r", HEX_SIZE * 0.12);
+      dot.setAttribute("r", HEX_SIZE * 0.11);
       dot.setAttribute("fill", country.color);
       dot.setAttribute("stroke", "white");
-      dot.setAttribute("stroke-width", "1.5");
+      dot.setAttribute("stroke-width", "1.3");
       dot.setAttribute("pointer-events", "none");
-      mapGroup.appendChild(dot);
+      group.appendChild(dot);
     }
+
+    mapGroup.appendChild(group);
   });
 
   refs.mapSvg.appendChild(mapGroup);
@@ -557,8 +715,8 @@ refs.mapSvg.addEventListener("mousedown", (e) => {
 
 refs.mapSvg.addEventListener("mousemove", (e) => {
   if (!state.isPanning) return;
-  const dx = e.clientX - panStart.mouseX;
-  const dy = e.clientY - panStart.mouseY;
+  const dx = (e.clientX - panStart.mouseX) * PAN_SENSITIVITY;
+  const dy = (e.clientY - panStart.mouseY) * PAN_SENSITIVITY;
   state.camera.x = panStart.camX + dx;
   state.camera.y = panStart.camY + dy;
   renderMap();
@@ -568,10 +726,10 @@ refs.mapSvg.addEventListener(
   "wheel",
   (e) => {
     e.preventDefault();
-    const delta = e.deltaY > 0 ? -0.08 : 0.08;
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
     state.camera.scale = Math.max(
       0.45,
-      Math.min(2.2, +(state.camera.scale + delta).toFixed(2))
+      Math.min(2.3, +(state.camera.scale + delta).toFixed(2))
     );
     renderMap();
   },

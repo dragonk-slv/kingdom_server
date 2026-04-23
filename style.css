@@ -51,7 +51,7 @@ button.active {
 
 .app {
   display: grid;
-  grid-template-columns: 360px 1fr;
+  grid-template-columns: 380px 1fr;
   min-height: 100vh;
 }
 
@@ -111,6 +111,10 @@ label,
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.tool-switch-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .terrain-grid,
 .fill-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -130,6 +134,7 @@ label,
 button,
 select,
 input[type="text"],
+input[type="number"],
 textarea {
   width: 100%;
   border-radius: 14px;
@@ -174,6 +179,7 @@ textarea {
 }
 
 input[type="text"],
+input[type="number"],
 select,
 textarea {
   padding: 11px 12px;
@@ -184,6 +190,7 @@ textarea {
 }
 
 input[type="text"]:focus,
+input[type="number"]:focus,
 select:focus,
 textarea:focus {
   border-color: var(--primary);
@@ -200,9 +207,9 @@ input[type="color"] {
 .country-list {
   display: grid;
   gap: 10px;
-  max-height: 290px;
+  max-height: 280px;
   overflow-y: auto;
-  margin-top: 14px;
+  margin-top: 8px;
 }
 
 .country-item {
@@ -290,7 +297,7 @@ input[type="color"] {
 }
 
 #exportText {
-  min-height: 220px;
+  min-height: 240px;
   resize: vertical;
   font-family: Consolas, monospace;
   font-size: 12px;

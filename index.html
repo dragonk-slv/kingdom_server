@@ -12,16 +12,17 @@
       <div class="panel intro-panel">
         <h1>六角形マップエディタ</h1>
         <p>
-          地形と国の所属を編集するための試作完成版です。
+          地形・領土・都市を編集するための試作完成版です。
           左クリックで塗る、ドラッグで連続塗り、背景ドラッグでマップ移動、ホイールで拡大縮小できます。
         </p>
       </div>
 
       <section class="panel">
         <h2>編集ツール</h2>
-        <div class="tool-switch">
+        <div class="tool-switch tool-switch-3">
           <button id="toolTerrainBtn" class="active">地形編集</button>
           <button id="toolCountryBtn">国編集</button>
+          <button id="toolCityBtn">都市編集</button>
         </div>
 
         <div id="terrainControls" class="tool-section">
@@ -46,21 +47,41 @@
 
           <button id="clearOwnershipBtn" class="secondary-btn">全タイルの所属を解除</button>
         </div>
+
+        <div id="cityControls" class="tool-section hidden">
+          <label>都市の操作</label>
+          <div class="tool-switch">
+            <button id="cityPaintBtn" class="active">都市を配置/更新</button>
+            <button id="cityEraseBtn">都市を削除</button>
+          </div>
+
+          <div class="field-group">
+            <label for="cityNameInput">都市名</label>
+            <input id="cityNameInput" type="text" placeholder="例: ドルトムント" />
+          </div>
+
+          <div class="field-group">
+            <label for="cityHpInput">都市体力</label>
+            <input id="cityHpInput" type="number" min="1" value="100" />
+          </div>
+
+          <div class="field-group">
+            <label for="cityLevelInput">都市レベル</label>
+            <input id="cityLevelInput" type="number" min="1" value="1" />
+          </div>
+
+          <div id="selectedCityInfo" class="mini-card hidden"></div>
+        </div>
       </section>
 
       <section class="panel">
-        <h2>国の作成</h2>
-        <div class="field-group">
-          <label for="countryNameInput">国名</label>
-          <input id="countryNameInput" type="text" placeholder="例: ドーラシア" />
-        </div>
-        <div class="field-group">
-          <label for="countryColorInput">色</label>
-          <input id="countryColorInput" type="color" value="#e06666" />
-        </div>
-        <button id="addCountryBtn" class="primary-btn">国を追加</button>
-
+        <h2>国の一覧</h2>
         <div id="countryList" class="country-list"></div>
+      </section>
+
+      <section class="panel">
+        <h2>都市一覧</h2>
+        <div id="cityList" class="country-list"></div>
       </section>
 
       <section class="panel">
@@ -80,6 +101,8 @@
           <div class="stat-card"><span>森</span><strong id="forestCount">0</strong></div>
           <div class="stat-card"><span>山</span><strong id="mountainCount">0</strong></div>
           <div class="stat-card"><span>海</span><strong id="seaCount">0</strong></div>
+          <div class="stat-card"><span>砂漠</span><strong id="desertCount">0</strong></div>
+          <div class="stat-card"><span>雪原</span><strong id="snowCount">0</strong></div>
         </div>
 
         <div id="hoverTileInfo" class="mini-card hidden"></div>
@@ -94,7 +117,7 @@
     <main class="map-area">
       <div class="map-help">
         <div>操作</div>
-        <div>左クリック: 塗る / 背景ドラッグ: 移動 / ホイール: ズーム</div>
+        <div>左クリック: 編集 / 背景ドラッグ: 移動 / ホイール: ズーム</div>
       </div>
 
       <svg id="mapSvg" class="map-svg"></svg>
